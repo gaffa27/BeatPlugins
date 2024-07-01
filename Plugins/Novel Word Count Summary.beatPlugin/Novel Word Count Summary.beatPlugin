@@ -1,28 +1,48 @@
 /* 
 
 
-Name: Novel Word Count Summary
-Copyright: mark stavar
-Description: Display hierarchical world count by heading level and scene for documents in Novel Style, excluding 
-Version: 1.0
-Type: Tool
-Compatibility: 1.999.14
+   Name: Novel Word Count Summary
+   Copyright: mark stavar
+   Description: Display hierarchical world count by heading level and scene for documents in Novel Style, excluding 
+   Version: 1.0
+   Type: Tool
+   Compatibility: 1.999.14
 
-<Description>
-	<p>Simple HTML description for Plugin Library</p>
-</Description>
+   <Description>
+   <p>Simple HTML description for Plugin Library</p>
+   </Description>
 
 
 */
 
+let html = "";
+let bodyHtml = "";
+let tailHtml = ""
 
 // Open development console
 //Beat.openConsole();
 
-let showTree =  1;
+let showTable =  0;
+let treeDebug = 0;
 
-if (! showTree) {
-    let html =
+let format;
+
+format = Beat.dropdownPrompt(
+	"Select Display Format", // Title
+	"Display as a Table or aa collapsable tree ", // Info text
+	["Table", "Tree"]
+)
+if (format == null) return
+
+if (format == "Table") {
+    showTable = 1;
+}
+else {
+    showTree = 1;
+}
+
+if (showTable) {
+    html =
 	"<head>\
   <link rel=\"stylesheet\" href=\"styles.css\">\
 </head>\
@@ -32,16 +52,21 @@ if (! showTree) {
 }
 else {
 
-let html =
-    "<head>\
+    html =
+	"<head>\
   <link rel=\"stylesheet\" href=\"styles.css\">\
 </head>\
 <body>\
 <h1>Novel Word Count Summary</h1>\
-<ul class=\"tree\">\
-  <li>\
-    <details open>";
+<ul class=\"tree\"><li><details>";
+    
+    tailHtml = "</ul></details></li></ul></body>";
+
 }
+
+let _head = "<li><details>";
+let _tail = "</ul></details></li>";
+
 
 
 // Function to count words, excluding inline notes, text with equal signs, and headings
@@ -62,6 +87,233 @@ function countWords(text) {
     return words;
 }
 
+function emitHtml (branch) {
+
+    let _h = "";
+    let i  = 0;
+
+    return _h;
+}
+
+class Node {
+    constructor(type, name, level, count) {
+	this.type = type;
+	this.name = name;
+	this.level = level;
+	this.count = count;
+	this.next = null;
+	this.child = null;;
+    }
+}
+
+class Script {
+    constructor() {
+	this.root = null;
+	this.last = null;
+    }
+
+    addNode (type, level, name, count) {
+
+	if (treeDebug)
+	    Beat.log("addNode::type: " + type + ", level: " + level + ", name: " + name);
+	
+	let _root = this.root;
+	let _n = new Node (type, name, level, count);
+	
+	if (_root === null) {
+
+	    this.root = _n;
+	    this.last = _n;
+	    if (treeDebug)
+		Beat.log (name + ": level : " + level + " == root");
+	}
+	else {
+
+	    let l = this.last;
+	    
+	    switch (type) {
+		
+	    case "Section":
+
+		
+		if (l.type == type && l.level == level) {
+			// add at the same level as the last node 
+			l.next = _n;
+			this.last = _n;
+		    if (treeDebug)
+			Beat.log (l.name + ":" + l.level + " => " + name + ":" + level);
+		}
+		else if (level == 1) {
+		    let s = this.root;
+		    while  (s.next != null) {
+			s = s.next;
+		    }
+		    s.next = _n;
+		    this.last = _n;
+		    if (treeDebug)
+			Beat.log (s.name + ": " + s.level + " => " + name + " : " + level);
+		}
+		else if (level == 2) {
+
+		    let r = this.root;
+		    while (r.next != null) {
+			r = r.next;
+		    }
+		    if (r.child == null) {
+			r.child = _n;
+			if (treeDebug)
+			    Beat.log (r.child.name + ": " + r.child.level + " +-->> " + name + ": " + level);
+		    }
+		    else {
+			let c = r.child;
+			while (c.next != null) {
+			    c = c.next;
+			}
+			c.next = _n;
+			if (treeDebug)
+			    Beat.log (c.name + ": " + c.level + " --->> " + name + ": " + level);
+		    }
+		}
+		this.last = _n;
+		break;
+		
+	    case "Heading":
+		
+		if (type == l.type) {
+		    l.child = _n;
+		    if (treeDebug)
+			Beat.log (l.name + ":" + l.level + " ==>> " + name + ":" + level);
+		}
+		else {
+		    // adding another scene
+	    
+		    if (l.child == null) {
+			l.child = _n;
+		    }	
+		    if (treeDebug)
+			Beat.log (l.name + ":" + l.level + " +=>> " + name + ":" + level);
+		}
+		this.last = _n;
+		break;
+	    }
+	}
+    }
+
+    printNode (n) {
+
+	let s = "";
+	
+	for (let i = 0; i < n.level; i++) {
+	    s += "\t"
+	}
+
+	if (n.type == "Heading")
+	    s += "\t";
+	
+	return s + "type: " + n.type + ", level: " + n.level + ", name: " + n.name;
+    }
+
+    genHtml (n) {
+
+	let s = "";
+	let c = "";
+	let x = "";
+	
+	if (n == null) 
+	    return "";
+
+	// process current node
+	switch (n.type) {
+	case "Heading":
+	    s =   "<li>" + n.name.substr (1) + "    " + n.count + "</li>" + this.genHtml(n.child) + this.genHtml(n.next);
+	    break;
+
+	case "Section":
+ 	    s =   _head + "<summary>" + n.name.substr (n.level) + "    " + n.count + "</summary><ul>" + this.genHtml (n.child) + _tail + this.genHtml (n.next);
+	    break;
+	}
+	
+	return s;
+    }
+    
+    genHtmlTree () {
+	return this.genHtml (this.root);
+    }
+    
+    traverseTree (n, f) {
+
+	let s = "";
+	
+	if (n == null)
+	    "";
+
+	s = f (n);
+
+	if (n.child) {
+	    s += this.traverseTree (n.child, f);
+	}
+
+	if (n.next) {
+	    s += this.traverseTree (n.next, f);
+	}
+	return s;
+    }
+
+    printTree () {
+
+	let s = ""
+	
+	Beat.log ("printTree()");
+
+	Beat.log (this.traverseTree (this.root, this.printNode));
+
+	
+    }
+
+    printHtmlNode (n) {
+
+	let _h = "";
+
+	if (n == null)
+	    return "";
+
+	if (n.type == "Heading") {
+	    return "<li>" + n.name + "    " + n.count + "</li>";
+	}
+	else {
+	    return _tail + _head + "<summary>" + n.name + "    " + n.count + "</summary></ul>";
+	}
+
+    }
+    
+    printHtmlTree () {
+	
+	Beat.log ("PrintHtmlTree()");
+
+	return this.traverseTree (this.root, this.printHtmlNode);
+	
+	
+    }
+}
+
+
+function  buildScript(s) {
+    
+    for (let i = s.length - 1; i >= 0; i--) {
+
+	_script.addNode (s[i]["type"], s[i]["level"], s[i]["name"], s[i]["count"]);
+    }
+
+    _script.printTree();
+}
+
+function genTreeHtml (script) {
+
+    _h = "";
+
+    return _h;
+}
+
 let totalCount = 0
 let level2Count = 0;
 let level1Count = 0
@@ -70,9 +322,11 @@ let count = 0;
 let level1Html = "";
 let level2Html = "";
 let sceneHtml = "";
-let bodyHtml = "";
 let elements = new Array ();
+let treeStack = new Array ();
 
+
+let _script = new Script();
 
 const scenes = Beat.outline()
 
@@ -81,6 +335,8 @@ for (const scene of scenes) {
     if (scene.type == Beat.type.section) {
 	
 	elements.push( {"type": scene.typeAsString(), "level": scene.sectionDepth, "name": scene.string, "count": 0});
+	//	Beat.log ("type: " + scene.typeAsString() + ", level: " + scene.sectionDepth + ", name: " +  scene.string + ", count: " + count);
+
     }
     else if (scene.type == Beat.type.heading) {
 	
@@ -94,14 +350,15 @@ for (const scene of scenes) {
 	    for (const line of lines) {
 		count += countWords(line.string)
 	    }
-	}     
+	}
 	elements.push({"type": scene.typeAsString(), "level": scene.sectionDepth, "name": scene.string, "count": count});
+	//	Beat.log ("type: " + scene.typeAsString() + ", level: " + scene.sectionDepth + ", name: " +  scene.string + ", count: " + count);
     }
 }
 
 while (elements.length > 0) {
 
-    const element = elements.pop();
+    element = elements.pop();
 
     Beat.log (element["name"] + " : " + element["type"] + " : " + element["count"]);
 
@@ -110,20 +367,45 @@ while (elements.length > 0) {
 	level2Count += element["count"];
 	level1Count += element["count"];
 	totalCount += element["count"];
-	
-bodyHtml = "<tr><td>" + element["name"] + "</td><td align=right>" + element["count"] + "</td></tr>" + bodyHtml;
+
+	if (showTable) {
+	    bodyHtml = "<tr><td>" + element["name"] + "</td><td align=right>" + element["count"] + "</td></tr>" + bodyHtml;
+	}
+	else {
+
+	    treeStack.push(element);
+
+	}
 	break;
 
     case "Section":
 
 	switch (element["level"]) {
 	case 2:
-	    bodyHtml = "<tr><td>" + element["name"] + "</td><td align=right>" + level2Count + "</td></tr>" + bodyHtml;
+	    if (showTable) {
+		bodyHtml = "<tr><td>" + element["name"] + "</td><td align=right>" + level2Count + "</td></tr>" + bodyHtml;
+	    }
+	    else {
+		element["count"] = level2Count;
+		treeStack.push(element);
+
+		sceneHtml = "";
+	    }
 	    level2Count = 0;
+	    hasSection2 = 0;
+	    //	    Beat.log ("Section 2: " + bodyHtml);
 	    break;
 	    
 	case 1:
-	    bodyHtml = "<tr><td>" + element["name"] + "</td><td align=right>" + level1Count + "</td></tr>" + bodyHtml;
+	    if (showTable) {
+		bodyHtml = "<tr><td>" + element["name"] + "</td><td align=right>" + level1Count + "</td></tr>" + bodyHtml;
+	    }
+	    else {
+		
+		//		Beat.log ("Section 1: " + bodyHtml);
+		element["count"] = level1Count;
+		treeStack.push(element);
+	    }
 	    level1Count = 0;
 	    break;
 	    
@@ -133,32 +415,36 @@ bodyHtml = "<tr><td>" + element["name"] + "</td><td align=right>" + element["cou
 	break;
 
     default:
-    break;
+	break;
 	
     }
 }
 
-if (! showTree) {
+if (showTable) {
     html += "<tr><td>Total Words</td><td align=right>" + totalCount + "</tr>" ;
     html += bodyHtml + "</table></body>";
 }
 else {
-    html += "<summary> Total Words " + totalCount + "</summary>";
-    html += "</details></li></ul></body>";
+
+    buildScript (treeStack);
+    
+    html += "<summary>Total Words:      " + totalCount + "</summary><ul>";
+    html += _script.genHtmlTree ();
+    //html += _script.printHtmlTree ();
+    html +=  tailHtml;
+
+    
 }
 
-
 Beat.log ("html: " + html);
-return
-
 
 Beat.htmlPanel(html, 500, 400,
-	function (htmlData) {
-	    
-	    Beat.end()
-	    
-	}
-);
+	       function (htmlData) {
+		   
+		   Beat.end()
+		   
+	       }
+	      );
 
 
 
